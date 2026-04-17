@@ -17,7 +17,7 @@ using GoalHandleExecute = rclcpp_action::ServerGoalHandle<ExecutePlan>;
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
-static const std::string PLANNING_GROUP = "arm";
+static const std::string PLANNING_GROUP = "ur_manipulator";
 
 class MoveItActionServer : public rclcpp::Node
 {
@@ -48,17 +48,21 @@ public:
         // (shared_from_this() is safe here — the node is fully constructed)
         init_thread_ = std::thread([this]() {
             RCLCPP_INFO(this->get_logger(), "Initialising MoveGroupInterface...");
-            move_group_ = std::make_shared<MoveGroupInterface>(shared_from_this(), PLANNING_GROUP);
-            move_group_->setPlanningTime(10.0);
-            move_group_->setMaxVelocityScalingFactor(0.3);
-            move_group_->setMaxAccelerationScalingFactor(0.3);
-            {
-                std::lock_guard<std::mutex> lock(mg_mutex_);
-                move_group_ready_ = true;
+            try {
+                move_group_ = std::make_shared<MoveGroupInterface>(shared_from_this(), PLANNING_GROUP);
+                move_group_->setPlanningTime(10.0);
+                move_group_->setMaxVelocityScalingFactor(0.3);
+                move_group_->setMaxAccelerationScalingFactor(0.3);
+                {
+                    std::lock_guard<std::mutex> lock(mg_mutex_);
+                    move_group_ready_ = true;
+                }
+                RCLCPP_INFO(this->get_logger(), "MoveIt Action Server ready.");
+                RCLCPP_INFO(this->get_logger(), "  plan_to_joint  — plan a trajectory");
+                RCLCPP_INFO(this->get_logger(), "  execute_plan   — execute the last stored plan");
+            } catch (const std::exception& e) {
+                RCLCPP_FATAL(this->get_logger(), "Failed to initialize MoveGroupInterface: %s", e.what());
             }
-            RCLCPP_INFO(this->get_logger(), "MoveIt Action Server ready.");
-            RCLCPP_INFO(this->get_logger(), "  plan_to_joint  — plan a trajectory");
-            RCLCPP_INFO(this->get_logger(), "  execute_plan   — execute the last stored plan");
         });
     }
 

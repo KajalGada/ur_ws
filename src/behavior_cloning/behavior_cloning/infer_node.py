@@ -88,12 +88,17 @@ class BCInferNode(Node):
             self.get_logger().warn(f"Joint mapping failed: {e}")
             return
 
+        self.get_logger().info(f"Joint order: {JOINT_ORDER}")
+        self.get_logger().info(f"Current state: {[f'{v:.4f}' for v in state]}")
+
         with torch.no_grad():
             action = self.model(torch.tensor(state).unsqueeze(0)).squeeze(0).numpy()
 
+        self.get_logger().info(f"Model action: {[f'{v:.4f}' for v in action]}")
+
         next_joints = np.clip(state + action, -6.28, 6.28).tolist()
 
-        self.get_logger().info(f"Inferred next joints: {[f'{v:.4f}' for v in next_joints]}")
+        self.get_logger().info(f"Next joints (clipped): {[f'{v:.4f}' for v in next_joints]}")
         self.goal_in_progress = True
         self._send_plan(next_joints)
 

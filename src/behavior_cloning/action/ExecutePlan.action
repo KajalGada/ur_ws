@@ -1,0 +1,4 @@
+# No goal needed — executes the last stored plan
+---
+bool success
+---

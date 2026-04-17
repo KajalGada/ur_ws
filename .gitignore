@@ -1,0 +1,15 @@
+build/
+install/
+log/
+.claude/
+src/Universal_Robots_Client_Library
+src/Universal_Robots_ROS2_Driver
+src/Universal_Robots_ROS2_Description
+src/behavior_cloning/data
+src/behavior_cloning/dataset
+src/behavior_cloning/dataset_old
+src/behavior_cloning/build
+src/behavior_cloning/log
+src/ur5_description/rviz/urdf_config.rviz
+src/my_robot_moveit_config
+.vscode/

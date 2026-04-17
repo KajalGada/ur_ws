@@ -1,0 +1,487 @@
+<?xml version="1.0"?>
+<!--
+  UR5 with SCOOP end effector — xacro description with ros2_control support.
+
+  Works with both:
+    • ur_robot_driver ur_control.launch.py  (real hardware)
+    • MoveIt demo.launch.py                 (fake/mock hardware)
+
+  Launch with real hardware:
+    ros2 launch ur_robot_driver ur_control.launch.py \
+      ur_type:=ur5 robot_ip:=192.168.10.125 \
+      description_package:=ur5_description \
+      description_file:=ur5_with_scoop.urdf.xacro
+
+  Launch with fake hardware:
+    ros2 launch ur_robot_driver ur_control.launch.py \
+      ur_type:=ur5 robot_ip:=0.0.0.0 \
+      use_fake_hardware:=true \
+      description_package:=ur5_description \
+      description_file:=ur5_with_scoop.urdf.xacro
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ur5_with_scoop">
+
+  <!-- =========================================================
+       XACRO ARGUMENTS  (all passed by ur_control.launch.py)
+  ========================================================= -->
+  <xacro:arg name="name"                    default="ur5"/>
+  <xacro:arg name="tf_prefix"               default=""/>
+
+  <!-- Kinematics / limits / physics config files -->
+  <xacro:arg name="kinematics_params"
+      default="$(find ur_description)/config/ur5/default_kinematics.yaml"/>
+  <xacro:arg name="joint_limit_params"
+      default="$(find ur_description)/config/ur5/joint_limits.yaml"/>
+  <xacro:arg name="physical_params"
+      default="$(find ur_description)/config/ur5/physical_parameters.yaml"/>
+  <xacro:arg name="visual_params"
+      default="$(find ur_description)/config/ur5/visual_parameters.yaml"/>
+
+  <!-- Safety controller -->
+  <xacro:arg name="safety_limits"           default="false"/>
+  <xacro:arg name="safety_pos_margin"       default="0.15"/>
+  <xacro:arg name="safety_k_position"       default="20"/>
+
+  <!-- ros2_control / hardware interface -->
+  <xacro:arg name="robot_ip"                default="0.0.0.0"/>
+  <xacro:arg name="use_fake_hardware"       default="false"/>
+  <xacro:arg name="fake_sensor_commands"    default="false"/>
+  <xacro:arg name="sim_gazebo"              default="false"/>
+  <xacro:arg name="sim_ignition"            default="false"/>
+  <xacro:arg name="headless_mode"           default="false"/>
+
+  <!-- UR script / recipe files (filled by ur_control.launch.py) -->
+  <xacro:arg name="script_filename"         default=""/>
+  <xacro:arg name="output_recipe_filename"  default=""/>
+  <xacro:arg name="input_recipe_filename"   default=""/>
+
+  <!-- Network ports -->
+  <xacro:arg name="reverse_ip"              default="0.0.0.0"/>
+  <xacro:arg name="reverse_port"            default="50001"/>
+  <xacro:arg name="script_sender_port"      default="50002"/>
+  <xacro:arg name="trajectory_port"         default="50003"/>
+  <xacro:arg name="script_command_port"     default="50004"/>
+
+  <!-- Tool communication (e-Series only) -->
+  <xacro:arg name="use_tool_communication"  default="false"/>
+  <xacro:arg name="tool_voltage"            default="0"/>
+  <xacro:arg name="tool_parity"             default="0"/>
+  <xacro:arg name="tool_baud_rate"          default="115200"/>
+  <xacro:arg name="tool_stop_bits"          default="1"/>
+  <xacro:arg name="tool_rx_idle_chars"      default="1.5"/>
+  <xacro:arg name="tool_tx_idle_chars"      default="3.5"/>
+  <xacro:arg name="tool_device_name"        default="/tmp/ttyUR"/>
+  <xacro:arg name="tool_tcp_port"           default="54321"/>
+
+  <!-- Initial joint positions for fake/simulated hardware -->
+  <xacro:arg name="initial_positions_file"
+      default="$(find ur_description)/config/initial_positions.yaml"/>
+
+  <!-- =========================================================
+       PROPERTIES
+  ========================================================= -->
+  <xacro:property name="initial_positions_file" value="$(arg initial_positions_file)"/>
+
+  <!-- Load kinematics hash from the calibration yaml -->
+  <xacro:property name="kinematics_config"
+      value="${xacro.load_yaml('$(arg kinematics_params)')}"/>
+  <xacro:property name="kinematics_hash"
+      value="${kinematics_config['kinematics']['hash']}"/>
+
+  <!-- =========================================================
+       INCLUDE ros2_control MACRO
+  ========================================================= -->
+  <xacro:include filename="$(find ur_description)/urdf/ur.ros2_control.xacro"/>
+
+  <!-- =========================================================
+       MATERIALS
+  ========================================================= -->
+  <material name="LightGrey">
+    <color rgba="0.7 0.7 0.7 1.0"/>
+  </material>
+  <material name="scoop_orange">
+    <color rgba="0.9 0.5 0.1 1.0"/>
+  </material>
+
+  <!-- =========================================================
+       LINK: base_link  (REP-103 root)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)base_link"/>
+
+  <!-- =========================================================
+       JOINT: base_link → base_link_inertia  (pi about Z)
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)base_link-base_link_inertia" type="fixed">
+    <parent link="$(arg tf_prefix)base_link"/>
+    <child link="$(arg tf_prefix)base_link_inertia"/>
+    <origin xyz="0 0 0" rpy="0 0 3.141592653589793"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: base_link_inertia
+  ========================================================= -->
+  <link name="$(arg tf_prefix)base_link_inertia">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 3.141592653589793"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/base.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 3.141592653589793"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/base.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="4.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.00443333156" ixy="0.0" ixz="0.0"
+               iyy="0.00443333156" iyz="0.0" izz="0.0072"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       JOINT: shoulder_pan  (base_link_inertia → shoulder_link)
+       d1 = 0.089159 m
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)shoulder_pan_joint" type="revolute">
+    <parent link="$(arg tf_prefix)base_link_inertia"/>
+    <child link="$(arg tf_prefix)shoulder_link"/>
+    <origin xyz="0 0 0.089159" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2831853071795860" upper="6.2831853071795860"
+           effort="150.0" velocity="3.1415926535897931"/>
+    <dynamics damping="0" friction="0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: shoulder_link
+  ========================================================= -->
+  <link name="$(arg tf_prefix)shoulder_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 3.141592653589793"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/shoulder.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 3.141592653589793"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/shoulder.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="3.7"/>
+      <origin xyz="0.0 -0.00193 -0.02561" rpy="0 0 0"/>
+      <inertia ixx="0.014972358333333331" ixy="0.0" ixz="0.0"
+               iyy="0.014972358333333331" iyz="0.0" izz="0.01040625"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       JOINT: shoulder_lift  (shoulder_link → upper_arm_link)
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)shoulder_lift_joint" type="revolute">
+    <parent link="$(arg tf_prefix)shoulder_link"/>
+    <child link="$(arg tf_prefix)upper_arm_link"/>
+    <origin xyz="0 0 0" rpy="1.570796327 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2831853071795860" upper="6.2831853071795860"
+           effort="150.0" velocity="3.1415926535897931"/>
+    <dynamics damping="0" friction="0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: upper_arm_link  (shoulder_offset = 0.13585 m)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)upper_arm_link">
+    <visual>
+      <origin xyz="0 0 0.13585" rpy="1.5707963267948966 0 -1.5707963267948966"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/upperarm.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.13585" rpy="1.5707963267948966 0 -1.5707963267948966"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/upperarm.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="8.393"/>
+      <origin xyz="-0.2125 0.0 0.11336" rpy="0 1.570796326794897 0"/>
+      <inertia ixx="0.13388583541666665" ixy="0.0" ixz="0.0"
+               iyy="0.13388583541666665" iyz="0.0" izz="0.0151074"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       JOINT: elbow  (upper_arm_link → forearm_link)
+       a2 = -0.425 m
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)elbow_joint" type="revolute">
+    <parent link="$(arg tf_prefix)upper_arm_link"/>
+    <child link="$(arg tf_prefix)forearm_link"/>
+    <origin xyz="-0.425 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1415926535897931" upper="3.1415926535897931"
+           effort="150.0" velocity="3.1415926535897931"/>
+    <dynamics damping="0" friction="0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: forearm_link  (elbow_offset = 0.0165 m)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)forearm_link">
+    <visual>
+      <origin xyz="0 0 0.0165" rpy="1.5707963267948966 0 -1.5707963267948966"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/forearm.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0165" rpy="1.5707963267948966 0 -1.5707963267948966"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/forearm.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="2.33"/>
+      <origin xyz="-0.24225 0.0 0.0265" rpy="0 1.570796326794897 0"/>
+      <inertia ixx="0.031216803515624995" ixy="0.0" ixz="0.0"
+               iyy="0.031216803515624995" iyz="0.0" izz="0.004095"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       JOINT: wrist_1  (forearm_link → wrist_1_link)
+       a3=-0.39225  d4=0.10915
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)wrist_1_joint" type="revolute">
+    <parent link="$(arg tf_prefix)forearm_link"/>
+    <child link="$(arg tf_prefix)wrist_1_link"/>
+    <origin xyz="-0.39225 0 0.10915" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2831853071795860" upper="6.2831853071795860"
+           effort="28.0" velocity="3.1415926535897931"/>
+    <dynamics damping="0" friction="0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: wrist_1_link  (visual_offset = -0.093 m)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)wrist_1_link">
+    <visual>
+      <origin xyz="0 0 -0.093" rpy="1.5707963267948966 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/wrist1.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.093" rpy="1.5707963267948966 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/wrist1.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.219"/>
+      <origin xyz="0.0 -0.01634 -0.0018" rpy="0 0 0"/>
+      <inertia ixx="0.002013889583333333" ixy="0.0" ixz="0.0"
+               iyy="0.002013889583333333" iyz="0.0" izz="0.0021942"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       JOINT: wrist_2  (wrist_1_link → wrist_2_link)
+       d5 = -0.09465 m
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)wrist_2_joint" type="revolute">
+    <parent link="$(arg tf_prefix)wrist_1_link"/>
+    <child link="$(arg tf_prefix)wrist_2_link"/>
+    <origin xyz="0 -0.09465 0" rpy="1.570796327 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2831853071795860" upper="6.2831853071795860"
+           effort="28.0" velocity="3.1415926535897931"/>
+    <dynamics damping="0" friction="0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: wrist_2_link  (visual_offset = -0.095 m)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)wrist_2_link">
+    <visual>
+      <origin xyz="0 0 -0.095" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/wrist2.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.095" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/wrist2.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.219"/>
+      <origin xyz="0.0 0.01634 -0.0018" rpy="0 0 0"/>
+      <inertia ixx="0.0018310395833333333" ixy="0.0" ixz="0.0"
+               iyy="0.0018310395833333333" iyz="0.0" izz="0.0021942"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       JOINT: wrist_3  (wrist_2_link → wrist_3_link)
+       d6 = 0.0823 m
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)wrist_3_joint" type="revolute">
+    <parent link="$(arg tf_prefix)wrist_2_link"/>
+    <child link="$(arg tf_prefix)wrist_3_link"/>
+    <origin xyz="0 0.0823 0" rpy="1.5707963265897932 3.141592653589793 3.141592653589793"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2831853071795860" upper="6.2831853071795860"
+           effort="28.0" velocity="3.1415926535897931"/>
+    <dynamics damping="0" friction="0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: wrist_3_link  (visual_offset = -0.0818 m)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)wrist_3_link">
+    <visual>
+      <origin xyz="0 0 -0.0818" rpy="1.5707963267948966 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/visual/wrist3.dae"/>
+      </geometry>
+      <material name="LightGrey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.0818" rpy="1.5707963267948966 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_description/meshes/ur5/collision/wrist3.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1879"/>
+      <origin xyz="0.0 0.0 -0.001159" rpy="0 0 0"/>
+      <inertia ixx="8.062475833333332e-05" ixy="0.0" ixz="0.0"
+               iyy="8.062475833333332e-05" iyz="0.0" izz="1.3211718750000002e-04"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       LINK: ft_frame  (force-torque sensor frame)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)ft_frame"/>
+  <joint name="$(arg tf_prefix)wrist_3_link-ft_frame" type="fixed">
+    <parent link="$(arg tf_prefix)wrist_3_link"/>
+    <child link="$(arg tf_prefix)ft_frame"/>
+    <origin xyz="0 0 0" rpy="3.141592653589793 0 0"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: base  (ROS-Industrial 'base' frame)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)base"/>
+  <joint name="$(arg tf_prefix)base_link-base_fixed_joint" type="fixed">
+    <parent link="$(arg tf_prefix)base_link"/>
+    <child link="$(arg tf_prefix)base"/>
+    <origin xyz="0 0 0" rpy="0 0 3.141592653589793"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: flange  (ROS-Industrial attachment point)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)flange"/>
+  <joint name="$(arg tf_prefix)wrist_3-flange" type="fixed">
+    <parent link="$(arg tf_prefix)wrist_3_link"/>
+    <child link="$(arg tf_prefix)flange"/>
+    <origin xyz="0 0 0" rpy="0 -1.5707963267948966 -1.5707963267948966"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: tool0  (UR standard TCP frame)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)tool0"/>
+  <joint name="$(arg tf_prefix)flange-tool0" type="fixed">
+    <parent link="$(arg tf_prefix)flange"/>
+    <child link="$(arg tf_prefix)tool0"/>
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0 1.5707963267948966"/>
+  </joint>
+
+  <!-- =========================================================
+       JOINT: tool0 → scoop_link  (fixed end-effector mount)
+  ========================================================= -->
+  <joint name="$(arg tf_prefix)tool0_scoop_joint" type="fixed">
+    <parent link="$(arg tf_prefix)tool0"/>
+    <child link="$(arg tf_prefix)scoop_link"/>
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0 3.141592653589793"/>
+  </joint>
+
+  <!-- =========================================================
+       LINK: scoop_link  (SCOOP end effector)
+  ========================================================= -->
+  <link name="$(arg tf_prefix)scoop_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur5_description/meshes/ur5_scoop.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="scoop_orange"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur5_description/meshes/ur5_scoop.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0"
+               iyy="0.001" iyz="0.0" izz="0.0005"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================
+       ros2_control — hardware interface
+       Selects real UR driver or mock_components/GenericSystem
+       based on use_fake_hardware argument.
+  ========================================================= -->
+  <xacro:ur_ros2_control
+    name="$(arg name)"
+    tf_prefix="$(arg tf_prefix)"
+    use_fake_hardware="$(arg use_fake_hardware)"
+    fake_sensor_commands="$(arg fake_sensor_commands)"
+    sim_gazebo="$(arg sim_gazebo)"
+    sim_ignition="$(arg sim_ignition)"
+    headless_mode="$(arg headless_mode)"
+    initial_positions="${xacro.load_yaml(initial_positions_file)}"
+    use_tool_communication="$(arg use_tool_communication)"
+    tool_voltage="$(arg tool_voltage)"
+    tool_parity="$(arg tool_parity)"
+    tool_baud_rate="$(arg tool_baud_rate)"
+    tool_stop_bits="$(arg tool_stop_bits)"
+    tool_rx_idle_chars="$(arg tool_rx_idle_chars)"
+    tool_tx_idle_chars="$(arg tool_tx_idle_chars)"
+    tool_device_name="$(arg tool_device_name)"
+    tool_tcp_port="$(arg tool_tcp_port)"
+    robot_ip="$(arg robot_ip)"
+    script_filename="$(arg script_filename)"
+    output_recipe_filename="$(arg output_recipe_filename)"
+    input_recipe_filename="$(arg input_recipe_filename)"
+    reverse_ip="$(arg reverse_ip)"
+    script_command_port="$(arg script_command_port)"
+    reverse_port="$(arg reverse_port)"
+    script_sender_port="$(arg script_sender_port)"
+    trajectory_port="$(arg trajectory_port)"
+    hash_kinematics="${kinematics_hash}"
+  />
+
+</robot>
